@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>签到数据汇总工具</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 12px;
+            padding: 20px 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            max-width: 800px;
+            max-height: 140px;
+            margin: 0 auto;
+        }
+        .upload-area:hover {
+            border-color: #007bff;
+            background-color: #f8f9fa;
+        }
+        .upload-area.dragover {
+            border-color: #007bff;
+            background-color: #e3f2fd;
+        }
+        .status-present {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-absent {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .table-container {
+            max-height: 500px;
+            overflow-y: auto;
+            overflow-x: auto;
+            width: 100%;
+            display: block;
+        }
+        .table-wrapper {
+            position: relative;
+            min-width: max-content;
+        }
+        .fixed-col {
+            position: sticky;
+            left: 0;
+            z-index: 1;
+            background-color: #fff !important;
+            box-shadow: inset -2px 0 0 #dee2e6;
+        }
+        .fixed-col-header {
+            position: sticky;
+            left: 0;
+            z-index: 2;
+            background-color: #f8f9fa !important;
+            box-shadow: inset -2px 0 0 #dee2e6;
+        }
+        #resultTable {
+            position: relative;
+        }
+        .tooltip-icon {
+            cursor: pointer;
+            color: #6c757d;
+            transition: color 0.2s;
+        }
+        .tooltip-icon:hover {
+            color: #0d6efd;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center mb-4">签到数据汇总工具</h1>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">上传签到文件</h5>
+                <p class="card-text">请上传包含Excel签到文件的ZIP压缩包</p>
+
+                <div
+                    class="upload-area mb-3"
+                    id="uploadArea"
+                    ondragover="event.preventDefault(); this.classList.add('dragover');"
+                    ondragleave="this.classList.remove('dragover');"
+                    ondrop="event.preventDefault(); this.classList.remove('dragover'); handleDrop(event);"
+                    onclick="document.getElementById('fileInput').click();"
+                >
+                    <input
+                        type="file"
+                        id="fileInput"
+                        accept=".zip"
+                        class="d-none"
+                        onchange="handleFileSelect(this)"
+                    >
+                    <div class="mb-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" class="bi bi-cloud-upload text-primary mx-auto" viewBox="0 0 16 16">
+                            <path fill-rule="evenodd" d="M4 14.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-7a.5.5 0 0 1-.5-.5v-1z"/>
+                            <path d="M4.406 1.342A5.5 5.5 0 0 1 8 0c1.664 0 3.165.584 4.406 1.342a4.5 4.5 0 0 1 1.812 5.174.5.5 0 0 0 .076.51A5.002 5.002 0 0 1 8 13a5.002 5.002 0 0 1-4.596-3.019.5.5 0 0 0-.076-.51A4.5 4.5 0 0 1 4.406 1.342zM8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 1a5 5 0 1 0 0-10 5 5 0 0 0 0 10z"/>
+                        </svg>
+                    </div>
+                    <p class="mb-1">点击或拖拽ZIP文件到此处上传</p>
+                    <p class="text-muted small">支持包含多个Excel签到文件的ZIP压缩包</p>
+                </div>
+
+                <div id="loading" class="d-none">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">加载中...</span>
+                    </div>
+                    <span class="ml-2">正在处理文件...</span>
+                </div>
+
+                <div id="error" class="d-none alert alert-danger"></div>
+            </div>
+        </div>
+
+        <div id="resultSection" class="d-none">
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="card-title">签到数据汇总</h5>
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-question-circle-fill tooltip-icon" viewBox="0 0 16 16" data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-html="true" title="缺勤次数：统计所有非『已签』『教师代签』『公假』的状态数量<br>旷课次数：仅统计状态为『未参与』的数量">
+                                <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+                            </svg>
+                            <select id="filterType" class="form-select" style="width: 120px;">
+                                <option value="absence">缺勤次数</option>
+                                <option value="truancy">旷课次数</option>
+                            </select>
+                            <span class="text-nowrap">&gt;=</span>
+                            <input type="number" id="filterThreshold" class="form-control" style="width: 80px;" min="0" value="0" onkeypress="if(event.key==='Enter') filterData()">
+                            <button class="btn btn-primary" onclick="filterData()">筛选</button>
+                            <button class="btn btn-secondary" onclick="resetFilter()">重置</button>
+                            <button class="btn btn-success" onclick="downloadExcel()">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-download me-1" viewBox="0 0 16 16">
+                                    <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                                    <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+                                </svg>
+                                下载Excel
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="table-container-wrapper" style="display: flex; overflow: hidden; border: 1px solid #dee2e6; border-radius: 0.375rem;">
+                        <div class="fixed-table-container" style="flex-shrink: 0; overflow-y: auto; max-height: 500px; border-right: 2px solid #dee2e6;">
+                            <table id="fixedTable" class="table table-striped table-bordered mb-0" style="margin-bottom: 0 !important;">
+                                <thead>
+                                    <tr></tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                        <div class="scroll-table-container" style="flex: 1; overflow-x: auto; overflow-y: auto; max-height: 500px;">
+                            <table id="scrollTable" class="table table-striped table-bordered mb-0" style="margin-bottom: 0 !important; min-width: max-content;">
+                                <thead>
+                                    <tr></tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div id="filterInfo" class="mt-2 text-muted small"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentData = [];
+        let currentDates = [];
+        let filteredData = [];
+
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+
+        function handleFileSelect(input) {
+            if (input.files.length > 0) {
+                processFile(input.files[0]);
+                input.value = '';
+            }
+        }
+
+        function handleDrop(event) {
+            const files = event.dataTransfer.files;
+            if (files.length > 0 && files[0].name.endsWith('.zip')) {
+                processFile(files[0]);
+            }
+        }
+
+        async function processFile(file) {
+            document.getElementById('loading').classList.remove('d-none');
+            document.getElementById('error').classList.add('d-none');
+            document.getElementById('resultSection').classList.add('d-none');
+            document.getElementById('filterInfo').textContent = '';
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    currentData = result.data;
+                    currentDates = result.dates;
+                    filteredData = [...currentData];
+                    displayResult(filteredData, result.columns);
+                } else {
+                    document.getElementById('error').textContent = result.error;
+                    document.getElementById('error').classList.remove('d-none');
+                }
+            } catch (error) {
+                document.getElementById('error').textContent = '上传失败: ' + error.message;
+                document.getElementById('error').classList.remove('d-none');
+            } finally {
+                document.getElementById('loading').classList.add('d-none');
+            }
+        }
+
+        function isValidStatus(status) {
+            const validStatuses = ['已签', '教师代签', '公假'];
+            return validStatuses.includes(status);
+        }
+
+        function isTruancyStatus(status) {
+            return status === '未参与';
+        }
+
+        function countInvalidStatuses(row, dates) {
+            let count = 0;
+            dates.forEach(date => {
+                const status = row[date] || '';
+                if (!isValidStatus(status)) {
+                    count++;
+                }
+            });
+            return count;
+        }
+
+        function countTruancyStatuses(row, dates) {
+            let count = 0;
+            dates.forEach(date => {
+                const status = row[date] || '';
+                if (isTruancyStatus(status)) {
+                    count++;
+                }
+            });
+            return count;
+        }
+
+        function filterData() {
+            const threshold = parseInt(document.getElementById('filterThreshold').value) || 0;
+            const filterType = document.getElementById('filterType').value;
+
+            if (filterType === 'absence') {
+                filteredData = currentData.filter(row => {
+                    const invalidCount = countInvalidStatuses(row, currentDates);
+                    return invalidCount >= threshold;
+                });
+                document.getElementById('filterInfo').textContent =
+                    `共 ${filteredData.length} 人缺勤次数大于等于 ${threshold} (已签、教师代签、公假为有效状态)`;
+            } else {
+                filteredData = currentData.filter(row => {
+                    const truancyCount = countTruancyStatuses(row, currentDates);
+                    return truancyCount >= threshold;
+                });
+                document.getElementById('filterInfo').textContent =
+                    `共 ${filteredData.length} 人旷课次数大于等于 ${threshold} (旷课=未参与)`;
+            }
+
+            const columns = ['姓名', '学号', '班级'].concat(currentDates);
+            displayResult(filteredData, columns);
+        }
+
+        function resetFilter() {
+            document.getElementById('filterThreshold').value = 0;
+            filteredData = [...currentData];
+            const columns = ['姓名', '学号', '班级'].concat(currentDates);
+            displayResult(filteredData, columns);
+            document.getElementById('filterInfo').textContent = '';
+        }
+
+        function displayResult(data, columns) {
+            const fixedTable = document.getElementById('fixedTable');
+            const fixedThead = fixedTable.querySelector('thead tr');
+            const fixedTbody = fixedTable.querySelector('tbody');
+
+            const scrollTable = document.getElementById('scrollTable');
+            const scrollThead = scrollTable.querySelector('thead tr');
+            const scrollTbody = scrollTable.querySelector('tbody');
+
+            fixedThead.innerHTML = '';
+            fixedTbody.innerHTML = '';
+            scrollThead.innerHTML = '';
+            scrollTbody.innerHTML = '';
+
+            const fixedCols = columns.slice(0, 3);
+            const scrollCols = columns.slice(3);
+
+            fixedCols.forEach(col => {
+                const th = document.createElement('th');
+                th.textContent = col;
+                th.classList.add('sticky-top', 'bg-light');
+                fixedThead.appendChild(th);
+            });
+
+            scrollCols.forEach(col => {
+                const th = document.createElement('th');
+                th.textContent = col;
+                th.classList.add('sticky-top', 'bg-light');
+                scrollThead.appendChild(th);
+            });
+
+            data.forEach(row => {
+                const fixedTr = document.createElement('tr');
+                const scrollTr = document.createElement('tr');
+
+                fixedCols.forEach(col => {
+                    const td = document.createElement('td');
+                    const value = row[col] || '';
+                    td.textContent = value;
+                    td.classList.add('bg-white');
+                    fixedTr.appendChild(td);
+                });
+
+                scrollCols.forEach(col => {
+                    const td = document.createElement('td');
+                    const value = row[col] || '';
+                    td.textContent = value;
+
+                    if (currentDates.includes(col)) {
+                        if (isValidStatus(value)) {
+                            td.classList.add('status-present');
+                        } else {
+                            td.classList.add('status-absent');
+                        }
+                    }
+
+                    scrollTr.appendChild(td);
+                });
+
+                fixedTbody.appendChild(fixedTr);
+                scrollTbody.appendChild(scrollTr);
+            });
+
+            const fixedContainer = document.querySelector('.fixed-table-container');
+            const scrollContainer = document.querySelector('.scroll-table-container');
+
+            fixedContainer.addEventListener('scroll', () => {
+                scrollContainer.scrollTop = fixedContainer.scrollTop;
+            });
+
+            scrollContainer.addEventListener('scroll', () => {
+                fixedContainer.scrollTop = scrollContainer.scrollTop;
+            });
+
+            document.getElementById('resultSection').classList.remove('d-none');
+        }
+
+        async function downloadExcel() {
+            try {
+                const response = await fetch('/download', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        data: filteredData,
+                        dates: currentDates
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('下载失败');
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = '签到汇总.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            } catch (error) {
+                alert('下载失败: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>
