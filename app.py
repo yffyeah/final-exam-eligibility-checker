@@ -133,6 +133,9 @@ def upload_file():
         finally:
             os.unlink(temp_zip_path)
         
+        if not data:
+            return jsonify({'error': '未能解析到有效数据，请检查上传的文件是否包含正确格式的Excel签到文件'}), 400
+        
         return jsonify({
             'success': True,
             'data': data,
