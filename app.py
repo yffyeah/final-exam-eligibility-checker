@@ -5,6 +5,7 @@ import pandas as pd
 import tempfile
 from io import BytesIO
 import re
+from datetime import datetime
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = tempfile.mkdtemp()
@@ -123,6 +124,8 @@ def upload_file():
     if not file.filename.endswith('.zip'):
         return jsonify({'error': '请上传zip文件'}), 400
     
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 上传文件: {file.filename}")
+    
     try:
         with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as temp_zip:
             temp_zip.write(file.read())
@@ -147,6 +150,7 @@ def upload_file():
 
 @app.route('/download', methods=['POST'])
 def download_excel():
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 下载文件: 签到汇总.xlsx")
     try:
         data = request.json.get('data', [])
         dates = request.json.get('dates', [])
@@ -170,4 +174,4 @@ def download_excel():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    app.run(debug=True, port=5010)
