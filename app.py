@@ -19,7 +19,7 @@ def extract_date_from_filename(filename):
 
 def parse_excel_file(filepath):
     try:
-        df = pd.read_excel(filepath)
+        df = pd.read_excel(filepath, engine='openpyxl')
         data = []
         header_found = False
         header_row = 0
