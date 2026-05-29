@@ -116,6 +116,16 @@
             </div>
         </div>
 
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">报表拉取逻辑说明</h5>
+                <ul class="mb-0">
+                    <li><strong>签到或签退活动：</strong>使用第7列（"签到状态"列）作为签到状态</li>
+                    <li><strong>签到+签退活动：</strong>使用第11列作为签到状态</li>
+                </ul>
+            </div>
+        </div>
+
         <div id="resultSection" class="d-none">
             <div class="card mb-4">
                 <div class="card-body">
@@ -131,6 +141,9 @@
                             </select>
                             <span class="text-nowrap">&gt;=</span>
                             <input type="number" id="filterThreshold" class="form-control" style="width: 80px;" min="0" value="0" onkeypress="if(event.key==='Enter') filterData()">
+                            <label class="form-check-label">
+                                <input type="checkbox" id="excludeLateEarly" class="form-check-input"> 迟到/早退不算缺勤
+                            </label>
                             <button class="btn btn-primary" onclick="filterData()">筛选</button>
                             <button class="btn btn-secondary" onclick="resetFilter()">重置</button>
                             <button class="btn btn-success" onclick="downloadExcel()">
@@ -179,6 +192,18 @@
             return new bootstrap.Tooltip(tooltipTriggerEl);
         });
 
+        document.getElementById('filterType').addEventListener('change', function() {
+            const excludeLateEarly = document.getElementById('excludeLateEarly');
+            if (this.value === 'absence') {
+                excludeLateEarly.disabled = false;
+            } else {
+                excludeLateEarly.disabled = true;
+                excludeLateEarly.checked = false;
+            }
+        });
+
+        document.getElementById('filterType').dispatchEvent(new Event('change'));
+
         function handleFileSelect(input) {
             if (input.files.length > 0) {
                 processFile(input.files[0]);
@@ -198,6 +223,10 @@
             document.getElementById('error').classList.add('d-none');
             document.getElementById('resultSection').classList.add('d-none');
             document.getElementById('filterInfo').textContent = '';
+            
+            document.getElementById('filterType').value = 'absence';
+            document.getElementById('filterThreshold').value = '0';
+            document.getElementById('excludeLateEarly').checked = false;
 
             const formData = new FormData();
             formData.append('file', file);
@@ -227,8 +256,12 @@
             }
         }
 
-        function isValidStatus(status) {
+        function isValidStatus(status, excludeLateEarly = false) {
             const validStatuses = ['已签', '教师代签', '公假'];
+            if (excludeLateEarly) {
+                validStatuses.push('迟到');
+                validStatuses.push('早退');
+            }
             return validStatuses.includes(status);
         }
 
@@ -236,11 +269,11 @@
             return status === '未参与';
         }
 
-        function countInvalidStatuses(row, dates) {
+        function countInvalidStatuses(row, dates, excludeLateEarly = false) {
             let count = 0;
             dates.forEach(date => {
                 const status = row[date] || '';
-                if (!isValidStatus(status)) {
+                if (!isValidStatus(status, excludeLateEarly)) {
                     count++;
                 }
             });
@@ -261,14 +294,19 @@
         function filterData() {
             const threshold = parseInt(document.getElementById('filterThreshold').value) || 0;
             const filterType = document.getElementById('filterType').value;
+            const excludeLateEarly = document.getElementById('excludeLateEarly').checked;
 
             if (filterType === 'absence') {
                 filteredData = currentData.filter(row => {
-                    const invalidCount = countInvalidStatuses(row, currentDates);
+                    const invalidCount = countInvalidStatuses(row, currentDates, excludeLateEarly);
                     return invalidCount >= threshold;
                 });
+                let validStatusesText = '已签、教师代签、公假';
+                if (excludeLateEarly) {
+                    validStatusesText += '、迟到、早退';
+                }
                 document.getElementById('filterInfo').textContent =
-                    `共 ${filteredData.length} 人缺勤次数大于等于 ${threshold} (已签、教师代签、公假为有效状态)`;
+                    `共 ${filteredData.length} 人缺勤次数大于等于 ${threshold} (${validStatusesText}为有效状态)`;
             } else {
                 filteredData = currentData.filter(row => {
                     const truancyCount = countTruancyStatuses(row, currentDates);

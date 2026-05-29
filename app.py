@@ -12,17 +12,36 @@ app.config['UPLOAD_FOLDER'] = tempfile.mkdtemp()
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
 def extract_date_from_filename(filename):
-    match = re.search(r'(\d{4})(\d{2})(\d{2})', filename)
+    # 匹配2020-2030年之间的日期，避免错误匹配
+    match = re.search(r'(202[0-9])(\d{2})(\d{2})', filename)
     if match:
-        return f"{match.group(1)}-{match.group(2)}-{match.group(3)}"
+        year = match.group(1)
+        month = match.group(2)
+        day = match.group(3)
+        # 验证月份和日期是否合理
+        if 1 <= int(month) <= 12 and 1 <= int(day) <= 31:
+            return f"{year}-{month}-{day}"
     return filename
 
 def parse_excel_file(filepath):
     try:
         df = pd.read_excel(filepath, engine='openpyxl')
         data = []
+        date_str = None
         header_found = False
         header_row = 0
+        
+        for i in range(min(5, df.shape[0])):
+            row = df.iloc[i].tolist()
+            row_str = ' '.join([str(cell) for cell in row if pd.notna(cell)])
+            date_match = re.search(r'(202[0-9])[\-/年](\d{1,2})[\-/月](\d{1,2})', row_str)
+            if date_match:
+                year = date_match.group(1)
+                month = date_match.group(2).zfill(2)
+                day = date_match.group(3).zfill(2)
+                if 1 <= int(month) <= 12 and 1 <= int(day) <= 31:
+                    date_str = f"{year}-{month}-{day}"
+                    break
         
         for i in range(df.shape[0]):
             row = df.iloc[i].tolist()
@@ -32,7 +51,7 @@ def parse_excel_file(filepath):
                 break
         
         if not header_found:
-            return []
+            return [], date_str
         
         columns = df.iloc[header_row].tolist()
         name_idx = columns.index('姓名') if '姓名' in columns else 0
@@ -61,28 +80,42 @@ def parse_excel_file(filepath):
                         '签到状态': status
                     })
         
-        return data
+        return data, date_str
     except Exception as e:
         print(f"解析Excel文件失败: {e}")
-        return []
+        return [], None
 
 def process_zip_file(zip_path):
     student_records = {}
     dates = []
+    date_counter = {}
 
     with tempfile.TemporaryDirectory() as temp_dir:
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(temp_dir)
 
         for root, dirs, files in os.walk(temp_dir):
+            if '__MACOSX' in root:
+                continue
             for file_name in files:
                 if file_name.endswith('.xlsx') and not file_name.startswith('~'):
                     file_path = os.path.join(root, file_name)
-                    date_str = extract_date_from_filename(file_name)
-                    dates.append(date_str)
 
                     try:
-                        data = parse_excel_file(file_path)
+                        data, date_str = parse_excel_file(file_path)
+                        
+                        if not date_str:
+                            date_str = extract_date_from_filename(file_name)
+                        
+                        if date_str in date_counter:
+                            date_counter[date_str] += 1
+                            col_name = f"{date_str}_{date_counter[date_str]}"
+                        else:
+                            date_counter[date_str] = 1
+                            col_name = date_str
+                        
+                        dates.append(col_name)
+
                         for record in data:
                             key = (record['学号'], record['姓名'])
                             if key not in student_records:
@@ -91,12 +124,12 @@ def process_zip_file(zip_path):
                                     '学号': record['学号'],
                                     '班级': record['班级']
                                 }
-                            student_records[key][date_str] = record['签到状态']
+                            student_records[key][col_name] = record['签到状态']
                     except Exception as e:
                         print(f"处理文件 {file_name} 失败: {e}")
                         continue
 
-    dates.sort()
+    dates.sort(key=lambda x: (x.split('_')[0], int(x.split('_')[1]) if '_' in x else 1))
 
     result = []
     for key in sorted(student_records.keys()):
